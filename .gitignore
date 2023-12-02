@@ -4,3 +4,6 @@
 # Compile Results
 out/
 *.exe
+
+# make file
+make_ssd
