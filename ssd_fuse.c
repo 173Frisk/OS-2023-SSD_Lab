@@ -351,6 +351,10 @@ static int ssd_read(const char *path, char *buf, size_t size,
     }
     return ssd_do_read(buf, size, offset);
 }
+
+// buf: the data need to be written to the storage
+// size: the size of the data in bytes
+// offset: the logical offset in bytes
 static int ssd_do_write(const char *buf, size_t size, off_t offset)
 {
     /*  TODO: only basic write case, need to consider other cases */
