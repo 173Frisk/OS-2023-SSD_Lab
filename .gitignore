@@ -1,0 +1,6 @@
+# Environment Settings
+.vscode/
+
+# Compile Results
+out/
+*.exe
