@@ -377,29 +377,53 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
     for (idx = 0; idx < tmp_lba_range; idx++)
     {
         /*  example only align 512, need to implement other cases  */
-        if (offset % 512 == 0 && size % 512 == 0)
+
+        // Calculate the number of bytes to write in the current iteration
+        int bytes_to_write = (remain_size < 512) ? remain_size : 512;
+
+        // Call FTL to write
+        rst = ftl_write(buf + process_size, 1, tmp_lba + idx);
+
+        if (rst == 0)
         {
-            rst = ftl_write(buf + process_size, 1, tmp_lba + idx);
-            if (rst == 0)
-            {
-                // write full return -enomem;
-                return -ENOMEM;
-            }
-            else if (rst < 0)
-            {
-                // error
-                return rst;
-            }
-            curr_size += 512;
-            remain_size -= 512;
-            process_size += 512;
-            offset += 512;
+            // Write full, return -enomem;
+            return -ENOMEM;
         }
-        else
+        else if (rst < 0)
         {
-            printf(" --> Not align 512 !!!");
-            return -EINVAL;
+            // Error
+            return rst;
         }
+
+        curr_size += bytes_to_write;
+        remain_size -= bytes_to_write;
+        process_size += bytes_to_write;
+        offset += bytes_to_write;
+
+        // given code
+        // if (offset % 512 == 0 && size % 512 == 0)
+        // {
+        //     rst = ftl_write(buf + process_size, 1, tmp_lba + idx);
+        //     if (rst == 0)
+        //     {
+        //         // write full return -enomem;
+        //         return -ENOMEM;
+        //     }
+        //     else if (rst < 0)
+        //     {
+        //         // error
+        //         return rst;
+        //     }
+        //     curr_size += 512;
+        //     remain_size -= 512;
+        //     process_size += 512;
+        //     offset += 512;
+        // }
+        // else
+        // {
+        //     printf(" --> Not align 512 !!!");
+        //     return -EINVAL;
+        // }
     }
 
     return size;

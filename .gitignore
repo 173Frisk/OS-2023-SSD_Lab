@@ -11,3 +11,6 @@ make_ssd
 # object file
 ssd_fuse
 ssd_fuse_dut
+
+# nand file
+nand_*
