@@ -13,7 +13,7 @@
 #define NAND_SIZE_KB (10)
 #define INVALID_PCA     (0xFFFFFFFF)
 #define FULL_PCA     (0xFFFFFFFE)
-#define NAND_LOCATION  "/home/frisk/ssd_fuse/"
+#define NAND_LOCATION  "/home/share/OS-2023-SSD_Lab/"
 
 enum
 {
