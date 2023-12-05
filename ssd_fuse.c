@@ -246,7 +246,7 @@ static int ftl_write(const char *buf, size_t lba_rnage, size_t lba)
         }
 
         L2P[lba] = pca.pca;
-        update_pca_status(pca.pca, PCA_USED);
+        update_pca_status(pca, PCA_USED);
         return 512;
     }
     else
