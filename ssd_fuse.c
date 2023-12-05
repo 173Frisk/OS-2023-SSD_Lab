@@ -381,6 +381,9 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
     int idx, curr_size, remain_size, rst;
     int i, read_rst;
     char *read_buf = malloc(512 * sizeof(char));
+    memset(read_buf, 0, sizeof(char) * 512);
+    char *write_buf = calloc(512, sizeof(char));
+    memset(write_buf, 0, sizeof(char) * 512);
 
     host_write_size += size;
     if (ssd_expand(offset + size) != 0)
@@ -393,102 +396,162 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
     printf("tmp_lba: %d\n", tmp_lba);
     // the number of lba should be written
     tmp_lba_range = (offset + size - 1) / 512 - (tmp_lba) + 1;
-    printf("tmp_lba_range: %d\n", tmp_lba_range);
+    // printf("tmp_lba_range: %d\n", tmp_lba_range);
 
     process_size = 0;
     remain_size = size;
-    curr_size = 0;
-    for (idx = 0; idx < tmp_lba_range; idx++)
+    int first_offset = offset % 512;
+
+    // not align at the start of the page
+    if (first_offset != 0)
     {
-        printf("current lba: %d\n", tmp_lba + idx);
-        char *write_buf = calloc(512, sizeof(char));
-        // Calculate the number of bytes to write in the current iteration
-        int bytes_to_write = (remain_size < 512) ? remain_size : 512;
-
-        if (offset == 0 && remain_size < 512)
+        printf("1. current lba: %d\n", tmp_lba);
+        read_rst = ftl_read(read_buf, tmp_lba);
+        if (read_rst == 0)
         {
-            for (i = 0; i < remain_size; ++i)
-            {
-                write_buf[i] = buf[process_size + i];
-            }
-
-            read_rst = ftl_read(read_buf, tmp_lba + idx);
-            if (read_rst != 0)
-            {
-                printf("remain_size:%d\n", remain_size);
-                printf("\nbefore overwrite:\n");
-                print_buffer(read_buf, 512, 0);
-
-                for (i = remain_size; i < 512; ++i)
-                {
-                    write_buf[i] = read_buf[i];
-                }
-            }
+            printf("Don't need to overwrite\n");
+        }
+        else
+        {
+            printf("first_offset:%d\n", first_offset);
+            printf("\nread_buf:\n");
+            print_buffer(read_buf, 512, 0);
         }
 
-        // if the offset != 0, may need to read data from nand and overwrite
-        if (offset != 0 && remain_size == offset)
+        for (i = 0; i < first_offset; ++i)
         {
-            read_rst = ftl_read(read_buf, tmp_lba + idx);
-            if (read_rst != 0)
-            {
-                // printf("\nbefore overwrite:\n");
-                // print_buffer(read_buf, 512, 0);
-                // printf("offset: %ld\n", offset);
-
-                // offset = 0;
-            }
+            write_buf[i] = read_buf[i];
         }
 
-        // testing
+        if (first_offset + remain_size < 512)
+        {
+            for (i = first_offset; i < first_offset + remain_size; ++i)
+            {
+                write_buf[i] = buf[i];
+            }
+            for (i = first_offset + remain_size; i < 512; ++i)
+            {
+                write_buf[i] = read_buf[i];
+            }
+            process_size += (512 - (remain_size - first_offset));
+            remain_size -= (512 - (remain_size - first_offset));
+        }
+        else
+        {
+            for (i = first_offset; i < 512; ++i)
+            {
+                // bug here
+                write_buf[i] = buf[i];
+            }
+            process_size += (512 - first_offset);
+            remain_size -= (512 - first_offset);
+        }
+
         printf("\nbuf to write:\n");
         print_buffer(write_buf, 512, 0);
-        // Call FTL to write
-        rst = ftl_write(write_buf, 1, tmp_lba + idx);
+        rst = ftl_write(write_buf, 1, tmp_lba);
 
+        // Write full, return -enomem;
         if (rst == 0)
-        {
-            // Write full, return -enomem;
             return -ENOMEM;
-        }
+        // Error
         else if (rst < 0)
-        {
-            // Error
             return rst;
+
+        ++tmp_lba;
+    }
+
+    // write the whole page
+    while (remain_size >= 512)
+    {
+        printf("2. current lba: %d\n", tmp_lba);
+        printf("\nbuf to write:\n");
+        print_buffer(buf + process_size, 512, 0);
+        rst = ftl_write(buf + process_size, 1, tmp_lba);
+        // Write full, return -enomem;
+        if (rst == 0)
+            return -ENOMEM;
+        // Error
+        else if (rst < 0)
+            return rst;
+
+        process_size += 512;
+        remain_size -= 512;
+        ++tmp_lba;
+    }
+
+    // write the remaining bytes
+    if (remain_size > 0)
+    {
+        printf("3. current lba: %d\n", tmp_lba);
+        memset(read_buf, 0, sizeof(char) * 512);
+        read_rst = ftl_read(read_buf, tmp_lba);
+        if (read_rst == 0)
+        {
+            printf("Don't need to overwrite\n");
+        }
+        else
+        {
+            printf("remain_size:%d\n", remain_size);
+            printf("\nread_buf:\n");
+            print_buffer(read_buf, 512, 0);
         }
 
-        curr_size += bytes_to_write;
-        remain_size -= bytes_to_write;
-        process_size += bytes_to_write;
-        offset += bytes_to_write;
+        for (i = 0; i < remain_size; ++i)
+        {
+            write_buf[i] = buf[process_size + i];
+        }
+        for (i = remain_size; i < 512; ++i)
+        {
+            write_buf[i] = read_buf[i];
+        }
 
-        free(write_buf);
+        printf("\nbuf to write:\n");
+        print_buffer(write_buf, 512, 0);
+        rst = ftl_write(write_buf, 1, tmp_lba);
 
-        // given code
-        // if (offset % 512 == 0 && size % 512 == 0)
-        // {
-        //     rst = ftl_write(buf + process_size, 1, tmp_lba + idx);
-        //     if (rst == 0)
-        //     {
-        //         // write full return -enomem;
-        //         return -ENOMEM;
-        //     }
-        //     else if (rst < 0)
-        //     {
-        //         // error
-        //         return rst;
-        //     }
-        //     curr_size += 512;
-        //     remain_size -= 512;
-        //     process_size += 512;
-        //     offset += 512;
-        // }
-        // else
-        // {
-        //     printf(" --> Not align 512 !!!");
-        //     return -EINVAL;
-        // }
+        // Write full, return -enomem;
+        if (rst == 0)
+            return -ENOMEM;
+        // Error
+        else if (rst < 0)
+            return rst;
+
+        process_size += remain_size;
+        remain_size -= remain_size;
+        ++tmp_lba;
     }
+
+    // for (idx = 0; idx < tmp_lba_range; idx++)
+    // {
+    // given code
+    // if (offset % 512 == 0 && size % 512 == 0)
+    // {
+    //     rst = ftl_write(buf + process_size, 1, tmp_lba + idx);
+    //     if (rst == 0)
+    //     {
+    //         // write full return -enomem;
+    //         return -ENOMEM;
+    //     }
+    //     else if (rst < 0)
+    //     {
+    //         // error
+    //         return rst;
+    //     }
+    //     curr_size += 512;
+    //     remain_size -= 512;
+    //     process_size += 512;
+    //     offset += 512;
+    // }
+    // else
+    // {
+    //     printf(" --> Not align 512 !!!");
+    //     return -EINVAL;
+    // }
+    // }
+
+    free(read_buf);
+    free(write_buf);
 
     return size;
 }

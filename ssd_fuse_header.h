@@ -11,13 +11,13 @@
 #define PHYSICAL_NAND_NUM (8)
 #define LOGICAL_NAND_NUM (5)
 #define NAND_SIZE_KB (10)
-#define INVALID_PCA     (0xFFFFFFFF)
-#define FULL_PCA     (0xFFFFFFFE)
-#define NAND_LOCATION  "/home/frisk/ssd_fuse/"
+#define INVALID_PCA (0xFFFFFFFF)
+#define FULL_PCA (0xFFFFFFFE)
+#define NAND_LOCATION "/media/sf_ssd"
 
 enum
 {
-    SSD_GET_LOGIC_SIZE   = _IOR('E', 0, size_t),
-    SSD_GET_PHYSIC_SIZE   = _IOR('E', 1, size_t),
-    SSD_GET_WA            = _IOR('E', 2, size_t),
+  SSD_GET_LOGIC_SIZE = _IOR('E', 0, size_t),
+  SSD_GET_PHYSIC_SIZE = _IOR('E', 1, size_t),
+  SSD_GET_WA = _IOR('E', 2, size_t),
 };
