@@ -22,7 +22,8 @@ enum
     SSD_FILE,
 };
 
-enum{
+enum
+{
     PCA_VALID,
     PCA_USED,
     PCA_INVALID,
@@ -222,7 +223,8 @@ static int ftl_read(char *buf, size_t lba)
     }
 }
 
-static void update_pca_status(PCA_RULE pca, int status){
+static void update_pca_status(PCA_RULE pca, int status)
+{
     printf("nand%d page%d is now invalid\n", pca.fields.block, pca.fields.page);
     pca_status[(pca.fields.block * NAND_SIZE_KB * 1024 / 512) + pca.fields.page] = status;
     printf("pca_status[%d] = %d\n", pca.fields.block * NAND_SIZE_KB * 1024 / 512 + pca.fields.page, status);
@@ -235,14 +237,16 @@ static int ftl_write(const char *buf, size_t lba_rnage, size_t lba)
 
     if (nand_write(buf, pca.pca) > 0)
     {
-        //overwrite operation
-        if(L2P[lba] != INVALID_PCA){
+        // overwrite operation
+        if (L2P[lba] != INVALID_PCA)
+        {
             PCA_RULE invalid_pca;
             invalid_pca.pca = L2P[lba];
             update_pca_status(invalid_pca, PCA_INVALID);
         }
 
         L2P[lba] = pca.pca;
+        update_pca_status(pca.pca, PCA_USED);
         return 512;
     }
     else
@@ -405,14 +409,14 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
         {
             printf("first_offset:%d\n", first_offset);
         }
-        
+
         for (i = 0; i < first_offset; ++i)
         {
             write_buf[i] = read_buf[i];
         }
 
         if (first_offset + remain_size < 512)
-        {   
+        {
             for (i = first_offset; i < first_offset + remain_size; ++i)
             {
                 write_buf[i] = buf[i - first_offset];
