@@ -311,6 +311,7 @@ static int ssd_do_read(char *buf, size_t size, off_t offset)
     {
         return 0;
     }
+    // size too big
     if (size > logic_size - offset)
     {
         // is valid data section
@@ -352,6 +353,23 @@ static int ssd_read(const char *path, char *buf, size_t size,
     return ssd_do_read(buf, size, offset);
 }
 
+static void print_buffer(const char *buf, size_t size, off_t offset)
+{
+    int i;
+
+    printf("Buffer content at offset %ld:\n", offset);
+
+    for (i = 0; i < size; ++i)
+    {
+        // Print each character directly
+        // printf("%c", buf[i]);
+
+        // Print each byte in hexadecimal format
+        printf("%02X ", (unsigned char)buf[offset + i]);
+    }
+    printf("\n\n");
+}
+
 // buf: the data need to be written to the storage
 // size: the size of the data in bytes
 // offset: the logical offset in bytes
@@ -361,6 +379,8 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
 
     int tmp_lba, tmp_lba_range, process_size;
     int idx, curr_size, remain_size, rst;
+    int i, read_rst;
+    char *read_buf = malloc(512 * sizeof(char));
 
     host_write_size += size;
     if (ssd_expand(offset + size) != 0)
@@ -368,21 +388,63 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
         return -ENOMEM;
     }
 
+    // the first lba to be written
     tmp_lba = offset / 512;
+    printf("tmp_lba: %d\n", tmp_lba);
+    // the number of lba should be written
     tmp_lba_range = (offset + size - 1) / 512 - (tmp_lba) + 1;
+    printf("tmp_lba_range: %d\n", tmp_lba_range);
 
     process_size = 0;
     remain_size = size;
     curr_size = 0;
     for (idx = 0; idx < tmp_lba_range; idx++)
     {
-        /*  example only align 512, need to implement other cases  */
-
+        printf("current lba: %d\n", tmp_lba + idx);
+        char *write_buf = calloc(512, sizeof(char));
         // Calculate the number of bytes to write in the current iteration
         int bytes_to_write = (remain_size < 512) ? remain_size : 512;
 
+        if (offset == 0 && remain_size < 512)
+        {
+            for (i = 0; i < remain_size; ++i)
+            {
+                write_buf[i] = buf[process_size + i];
+            }
+
+            read_rst = ftl_read(read_buf, tmp_lba + idx);
+            if (read_rst != 0)
+            {
+                printf("remain_size:%d\n", remain_size);
+                printf("\nbefore overwrite:\n");
+                print_buffer(read_buf, 512, 0);
+
+                for (i = remain_size; i < 512; ++i)
+                {
+                    write_buf[i] = read_buf[i];
+                }
+            }
+        }
+
+        // if the offset != 0, may need to read data from nand and overwrite
+        if (offset != 0 && remain_size == offset)
+        {
+            read_rst = ftl_read(read_buf, tmp_lba + idx);
+            if (read_rst != 0)
+            {
+                // printf("\nbefore overwrite:\n");
+                // print_buffer(read_buf, 512, 0);
+                // printf("offset: %ld\n", offset);
+
+                // offset = 0;
+            }
+        }
+
+        // testing
+        printf("\nbuf to write:\n");
+        print_buffer(write_buf, 512, 0);
         // Call FTL to write
-        rst = ftl_write(buf + process_size, 1, tmp_lba + idx);
+        rst = ftl_write(write_buf, 1, tmp_lba + idx);
 
         if (rst == 0)
         {
@@ -399,6 +461,8 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
         remain_size -= bytes_to_write;
         process_size += bytes_to_write;
         offset += bytes_to_write;
+
+        free(write_buf);
 
         // given code
         // if (offset % 512 == 0 && size % 512 == 0)
