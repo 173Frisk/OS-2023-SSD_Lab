@@ -22,6 +22,12 @@ enum
     SSD_FILE,
 };
 
+enum{
+    PCA_VALID,
+    PCA_USED,
+    PCA_INVALID,
+};
+
 static size_t physic_size;
 static size_t logic_size;
 static size_t host_write_size;
@@ -41,6 +47,7 @@ union pca_rule
 PCA_RULE curr_pca;
 
 unsigned int *L2P;
+int *pca_status;
 
 static int ssd_resize(size_t new_size)
 {
@@ -166,7 +173,7 @@ static unsigned int get_next_pca()
     }
 
     // if current page is the last page in the storage
-    if (curr_pca.fields.page == (NAND_SIZE_KB * 1024 / 512))
+    if (curr_pca.fields.page == (NAND_SIZE_KB * 1024 / 512) - 1)
     {
         //  implement this when making GC
         //  find next empty storage for new pca
@@ -197,30 +204,6 @@ static unsigned int get_next_pca()
         printf("PCA = page %d, nand %d\n", curr_pca.fields.page, curr_pca.fields.block);
         return curr_pca.pca;
     }
-
-    // --------------------old code-------------------------
-    // if current block is in the rightest storage
-    // if (curr_pca.fields.block == PHYSICAL_NAND_NUM - 1)
-    // {
-    //     // down shift to the next row of pages
-    //     curr_pca.fields.page += 1;
-    // }
-
-    // // cyclely right shift 1 storage every time
-    // curr_pca.fields.block = (curr_pca.fields.block + 1) % PHYSICAL_NAND_NUM;
-
-    // // check if the pca is full
-    // if (curr_pca.fields.page >= (NAND_SIZE_KB * 1024 / 512))
-    // {
-    //     printf("No new PCA\n");
-    //     curr_pca.pca = FULL_PCA;
-    //     return FULL_PCA;
-    // }
-    // else
-    // {
-    //     printf("PCA = page %d, nand %d\n", curr_pca.fields.page, curr_pca.fields.block);
-    //     return curr_pca.pca;
-    // }
 }
 
 static int ftl_read(char *buf, size_t lba)
@@ -239,14 +222,26 @@ static int ftl_read(char *buf, size_t lba)
     }
 }
 
+static void update_pca_status(PCA_RULE pca, int status){
+    printf("nand%d page%d is now invalid\n", pca.fields.block, pca.fields.page);
+    pca_status[(pca.fields.block * NAND_SIZE_KB * 1024 / 512) + pca.fields.page] = status;
+    printf("pca_status[%d] = %d\n", pca.fields.block * NAND_SIZE_KB * 1024 / 512 + pca.fields.page, status);
+}
+
 static int ftl_write(const char *buf, size_t lba_rnage, size_t lba)
 {
-    /*  TODO: only basic write case, need to consider other cases */
     PCA_RULE pca;
     pca.pca = get_next_pca();
 
     if (nand_write(buf, pca.pca) > 0)
     {
+        //overwrite operation
+        if(L2P[lba] != INVALID_PCA){
+            PCA_RULE invalid_pca;
+            invalid_pca.pca = L2P[lba];
+            update_pca_status(invalid_pca, PCA_INVALID);
+        }
+
         L2P[lba] = pca.pca;
         return 512;
     }
@@ -375,10 +370,8 @@ static void print_buffer(const char *buf, size_t size, off_t offset)
 // offset: the logical offset in bytes
 static int ssd_do_write(const char *buf, size_t size, off_t offset)
 {
-    /*  TODO: only basic write case, need to consider other cases */
-
-    int tmp_lba, tmp_lba_range, process_size;
-    int idx, curr_size, remain_size, rst;
+    int tmp_lba, process_size;
+    int remain_size, rst;
     int i, read_rst;
     char *read_buf = malloc(512 * sizeof(char));
     memset(read_buf, 0, sizeof(char) * 512);
@@ -394,9 +387,6 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
     // the first lba to be written
     tmp_lba = offset / 512;
     printf("tmp_lba: %d\n", tmp_lba);
-    // the number of lba should be written
-    tmp_lba_range = (offset + size - 1) / 512 - (tmp_lba) + 1;
-    // printf("tmp_lba_range: %d\n", tmp_lba_range);
 
     process_size = 0;
     remain_size = size;
@@ -414,20 +404,18 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
         else
         {
             printf("first_offset:%d\n", first_offset);
-            printf("\nread_buf:\n");
-            print_buffer(read_buf, 512, 0);
         }
-
+        
         for (i = 0; i < first_offset; ++i)
         {
             write_buf[i] = read_buf[i];
         }
 
         if (first_offset + remain_size < 512)
-        {
+        {   
             for (i = first_offset; i < first_offset + remain_size; ++i)
             {
-                write_buf[i] = buf[i];
+                write_buf[i] = buf[i - first_offset];
             }
             for (i = first_offset + remain_size; i < 512; ++i)
             {
@@ -440,8 +428,7 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
         {
             for (i = first_offset; i < 512; ++i)
             {
-                // bug here
-                write_buf[i] = buf[i];
+                write_buf[i] = buf[i - first_offset];
             }
             process_size += (512 - first_offset);
             remain_size -= (512 - first_offset);
@@ -493,8 +480,6 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
         else
         {
             printf("remain_size:%d\n", remain_size);
-            printf("\nread_buf:\n");
-            print_buffer(read_buf, 512, 0);
         }
 
         for (i = 0; i < remain_size; ++i)
@@ -641,6 +626,8 @@ int main(int argc, char *argv[])
     curr_pca.pca = INVALID_PCA;
     L2P = malloc(LOGICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512 * sizeof(int));
     memset(L2P, INVALID_PCA, sizeof(int) * LOGICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512);
+    pca_status = malloc(PHYSICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512 * sizeof(int));
+    memset(pca_status, PCA_VALID, PHYSICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512 * sizeof(int));
 
     // create nand file
     for (idx = 0; idx < PHYSICAL_NAND_NUM; idx++)
