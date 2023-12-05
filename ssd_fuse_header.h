@@ -17,7 +17,7 @@
 
 enum
 {
-    SSD_GET_LOGIC_SIZE   = _IOR('E', 0, size_t),
-    SSD_GET_PHYSIC_SIZE   = _IOR('E', 1, size_t),
-    SSD_GET_WA            = _IOR('E', 2, size_t),
+  SSD_GET_LOGIC_SIZE = _IOR('E', 0, size_t),
+  SSD_GET_PHYSIC_SIZE = _IOR('E', 1, size_t),
+  SSD_GET_WA = _IOR('E', 2, size_t),
 };
