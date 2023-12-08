@@ -202,7 +202,7 @@ static unsigned int get_next_pca()
     }
     else
     {
-        printf("PCA = page %d, nand %d\n", curr_pca.fields.page, curr_pca.fields.block);
+        // printf("PCA = page %d, nand %d\n", curr_pca.fields.page, curr_pca.fields.block);
         return curr_pca.pca;
     }
 }
@@ -225,28 +225,52 @@ static int ftl_read(char *buf, size_t lba)
 
 static void update_pca_status(PCA_RULE pca, int status)
 {
-    printf("nand%d page%d is now invalid\n", pca.fields.block, pca.fields.page);
+
     pca_status[(pca.fields.block * NAND_SIZE_KB * 1024 / 512) + pca.fields.page] = status;
+    printf("updating pca status...\n");
     printf("pca_status[%d] = %d\n", pca.fields.block * NAND_SIZE_KB * 1024 / 512 + pca.fields.page, status);
+}
+
+static void print_pca_status_table()
+{
+    int i, j;
+
+    for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j)
+    {
+        for (i = 0; i < PHYSICAL_NAND_NUM; ++i)
+        {
+            printf("%2d", pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j]);
+        }
+        printf("\n");
+    }
 }
 
 static int ftl_write(const char *buf, size_t lba_rnage, size_t lba)
 {
+    printf("write lba: %ld\n", lba);
     PCA_RULE pca;
     pca.pca = get_next_pca();
 
+    printf("writing PCA: page %d, nand %d\n", curr_pca.fields.page, curr_pca.fields.block);
     if (nand_write(buf, pca.pca) > 0)
     {
         // overwrite operation
-        if (L2P[lba] != INVALID_PCA)
+        // need to modify
+        // printf("%d\n", L2P[lba]);
+        PCA_RULE tmp_pca;
+        tmp_pca.pca = L2P[lba];
+        if (!(tmp_pca.pca == INVALID_PCA))
         {
-            PCA_RULE invalid_pca;
-            invalid_pca.pca = L2P[lba];
-            update_pca_status(invalid_pca, PCA_INVALID);
+            int status = pca_status[(tmp_pca.fields.block * NAND_SIZE_KB * 1024 / 512) + tmp_pca.fields.page];
+            if (status == PCA_USED)
+            {
+                update_pca_status(tmp_pca, PCA_INVALID);
+            }
         }
 
         L2P[lba] = pca.pca;
         update_pca_status(pca, PCA_USED);
+        print_pca_status_table();
         return 512;
     }
     else
@@ -390,7 +414,7 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
 
     // the first lba to be written
     tmp_lba = offset / 512;
-    printf("tmp_lba: %d\n", tmp_lba);
+    // printf("tmp_lba: %d\n", tmp_lba);
 
     process_size = 0;
     remain_size = size;
@@ -399,7 +423,7 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
     // not align at the start of the page
     if (first_offset != 0)
     {
-        printf("1. current lba: %d\n", tmp_lba);
+        // printf("1. current lba: %d\n", tmp_lba);
         read_rst = ftl_read(read_buf, tmp_lba);
         if (read_rst == 0)
         {
@@ -438,8 +462,8 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
             remain_size -= (512 - first_offset);
         }
 
-        printf("\nbuf to write:\n");
-        print_buffer(write_buf, 512, 0);
+        // printf("\nbuf to write:\n");
+        // print_buffer(write_buf, 512, 0);
         rst = ftl_write(write_buf, 1, tmp_lba);
 
         // Write full, return -enomem;
@@ -455,9 +479,9 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
     // write the whole page
     while (remain_size >= 512)
     {
-        printf("2. current lba: %d\n", tmp_lba);
-        printf("\nbuf to write:\n");
-        print_buffer(buf + process_size, 512, 0);
+        // printf("2. current lba: %d\n", tmp_lba);
+        // printf("\nbuf to write:\n");
+        // print_buffer(buf + process_size, 512, 0);
         rst = ftl_write(buf + process_size, 1, tmp_lba);
         // Write full, return -enomem;
         if (rst == 0)
@@ -474,7 +498,7 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
     // write the remaining bytes
     if (remain_size > 0)
     {
-        printf("3. current lba: %d\n", tmp_lba);
+        // printf("3. current lba: %d\n", tmp_lba);
         memset(read_buf, 0, sizeof(char) * 512);
         read_rst = ftl_read(read_buf, tmp_lba);
         if (read_rst == 0)
@@ -495,8 +519,8 @@ static int ssd_do_write(const char *buf, size_t size, off_t offset)
             write_buf[i] = read_buf[i];
         }
 
-        printf("\nbuf to write:\n");
-        print_buffer(write_buf, 512, 0);
+        // printf("\nbuf to write:\n");
+        // print_buffer(write_buf, 512, 0);
         rst = ftl_write(write_buf, 1, tmp_lba);
 
         // Write full, return -enomem;
