@@ -49,7 +49,6 @@ PCA_RULE curr_pca;
 
 unsigned int *L2P;
 int *pca_status;
-char **storage_cache;
 
 static int ssd_resize(size_t new_size)
 {
@@ -130,7 +129,7 @@ static int nand_write(const char *buf, int pca)
 static int nand_erase(int block)
 {
     char nand_name[100];
-    // int found = 0;
+    int found = 0;
     FILE *fptr;
 
     snprintf(nand_name, 100, "%s/nand_%d", NAND_LOCATION, block);
@@ -146,112 +145,14 @@ static int nand_erase(int block)
         return -EINVAL;
     }
 
-    // original code, function unknown
-    //  if (found == 0)
-    //  {
-    //      printf("nand erase not found\n");
-    //      return -EINVAL;
-    //  }
+    if (found == 0)
+    {
+        printf("nand erase not found\n");
+        return -EINVAL;
+    }
 
     printf("nand erase %d pass\n", block);
     return 1;
-}
-
-static void update_pca_status(PCA_RULE pca, int status)
-{
-
-    pca_status[(pca.fields.block * NAND_SIZE_KB * 1024 / 512) + pca.fields.page] = status;
-    printf("updating pca_status[%d] = %d\n", pca.fields.block * NAND_SIZE_KB * 1024 / 512 + pca.fields.page, status);
-}
-
-static void print_pca_status_table()
-{
-    int i, j;
-
-    for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j)
-    {
-        for (i = 0; i < PHYSICAL_NAND_NUM; ++i)
-        {
-            printf("%2d", pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j]);
-        }
-        printf("\n");
-    }
-}
-
-static unsigned int get_next_pca();
-static unsigned int ftl_gc()
-{
-    printf("starting GC\n");
-    // cache all the data from nands to the storage_cache
-    int i, j, k;
-    PCA_RULE tmp_pca, write_pca;
-    curr_pca.pca = INVALID_PCA;
-
-    for (i = 0; i < PHYSICAL_NAND_NUM; ++i)
-    {
-        for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j)
-        {
-            tmp_pca.fields.block = i;
-            tmp_pca.fields.page = j;
-            nand_read(storage_cache[i * NAND_SIZE_KB * 1024 / 512 + j], tmp_pca.pca);
-        }
-    }
-
-    // erase all nands
-    for (i = 0; i < PHYSICAL_NAND_NUM; ++i)
-    {
-        nand_erase(i);
-    }
-
-    // write back the data from cache to nand
-    for (i = 0; i < PHYSICAL_NAND_NUM; ++i)
-    {
-        for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j)
-        {
-            // if this pca has data
-            if (pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j] == PCA_USED)
-            {
-                tmp_pca.fields.block = i;
-                tmp_pca.fields.page = j;
-                write_pca.pca = get_next_pca();
-                printf("writing from %d, %d\n", i, j);
-                printf("writing to %d, %d\n", write_pca.fields.block, write_pca.fields.page);
-                nand_write(storage_cache[i * NAND_SIZE_KB * 1024 / 512 + j], write_pca.pca);
-                update_pca_status(write_pca, PCA_USED);
-
-                // update L2P
-                for (k = 0; k < LOGICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512; ++k)
-                {
-                    if (L2P[k] == tmp_pca.pca)
-                    {
-                        printf("updating L2P[%d] from %d, %d to %d, %d\n", k, tmp_pca.fields.block, tmp_pca.fields.page, write_pca.fields.block, write_pca.fields.page);
-                        L2P[k] = write_pca.pca;
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    // update the pca_status after write_pca to PCA_VALID
-    for (i = write_pca.fields.block; i < PHYSICAL_NAND_NUM; ++i)
-    {
-        for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j)
-        {
-            if (i == write_pca.fields.block && j <= write_pca.fields.page)
-            {
-                continue;
-            }
-            else
-            {
-                pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j] = PCA_VALID;
-            }
-        }
-    }
-    printf("pca_status after GC:\n");
-    print_pca_status_table();
-    // return the next avalible pca
-    return get_next_pca();
 }
 
 static unsigned int get_next_pca()
@@ -295,11 +196,15 @@ static unsigned int get_next_pca()
     // check if the current pca is out of range of storage
     if (curr_pca.fields.block >= PHYSICAL_NAND_NUM)
     {
-        printf("No new PCA, do garbage collection\n");
-        curr_pca.pca = ftl_gc();
+        printf("No new PCA\n");
+        curr_pca.pca = FULL_PCA;
+        return FULL_PCA;
     }
-    // printf("PCA = page %d, nand %d\n", curr_pca.fields.page, curr_pca.fields.block);
-    return curr_pca.pca;
+    else
+    {
+        // printf("PCA = page %d, nand %d\n", curr_pca.fields.page, curr_pca.fields.block);
+        return curr_pca.pca;
+    }
 }
 
 static int ftl_read(char *buf, size_t lba)
@@ -318,9 +223,31 @@ static int ftl_read(char *buf, size_t lba)
     }
 }
 
+static void update_pca_status(PCA_RULE pca, int status)
+{
+
+    pca_status[(pca.fields.block * NAND_SIZE_KB * 1024 / 512) + pca.fields.page] = status;
+    printf("updating pca status...\n");
+    printf("pca_status[%d] = %d\n", pca.fields.block * NAND_SIZE_KB * 1024 / 512 + pca.fields.page, status);
+}
+
+static void print_pca_status_table()
+{
+    int i, j;
+
+    for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j)
+    {
+        for (i = 0; i < PHYSICAL_NAND_NUM; ++i)
+        {
+            printf("%2d", pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j]);
+        }
+        printf("\n");
+    }
+}
+
 static int ftl_write(const char *buf, size_t lba_rnage, size_t lba)
 {
-    printf("lba: %ld\n", lba);
+    printf("write lba: %ld\n", lba);
     PCA_RULE pca;
     pca.pca = get_next_pca();
 
@@ -729,12 +656,6 @@ int main(int argc, char *argv[])
     memset(L2P, INVALID_PCA, sizeof(int) * LOGICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512);
     pca_status = malloc(PHYSICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512 * sizeof(int));
     memset(pca_status, PCA_VALID, PHYSICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512 * sizeof(int));
-
-    storage_cache = (char **)malloc(PHYSICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512 * sizeof(char *));
-    for (idx = 0; idx < PHYSICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512; ++idx)
-    {
-        storage_cache[idx] = (char *)malloc(512 * sizeof(char));
-    }
 
     // create nand file
     for (idx = 0; idx < PHYSICAL_NAND_NUM; idx++)
