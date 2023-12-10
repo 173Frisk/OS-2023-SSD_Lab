@@ -51,51 +51,6 @@ unsigned int *L2P;
 int *pca_status;
 char **storage_cache;
 
-PCA_RULE table[LOGICAL_NAND_NUM][NAND_SIZE_KB * 1024 / 512], log_block_tail;
-int logBlocks[PHYSICAL_NAND_NUM - LOGICAL_NAND_NUM];
-
-char IsLogBlock(int targetBlock)
-{
-    for (int index = 0; index < (PHYSICAL_NAND_NUM - LOGICAL_NAND_NUM); index++)
-    {
-        if (logBlocks[index] == targetBlock)
-        {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-static unsigned int ftl_gc();
-
-PCA_RULE GetNextLogPage(PCA_RULE target)
-{
-    target.fields.page++;
-    if (target.fields.page >= NAND_SIZE_KB * 1024 / 512)
-    {
-        target.fields.block++;
-        target.fields.page = 0;
-    }
-    // WrapBack
-    if (target.fields.block >= PHYSICAL_NAND_NUM)
-    {
-        ftl_gc();
-        return log_block_tail;
-    }
-    // If next block is not log block -> select next one
-    while (!IsLogBlock(target.fields.block))
-    {
-        target.fields.block++;
-        // WrapBack
-        if (target.fields.block >= PHYSICAL_NAND_NUM)
-        {
-            ftl_gc();
-            return log_block_tail;
-        }
-    }
-    return target;
-}
-
 static int ssd_resize(size_t new_size)
 {
     // set logic size to new_size
@@ -224,201 +179,351 @@ static void print_pca_status_table()
 }
 
 static unsigned int get_next_pca();
+/*
+static unsigned int ftl_gc()
+{
+    printf("starting GC\n");
+    //////////////////////////////////////////////廖末哲//////////////////////
+    /////////////////////////////////////////////////////////////////////
+    // cache all the data from nands to the storage_cache
+    int i, j, k;
+    PCA_RULE tmp_pca, write_pca;
+    curr_pca.pca = INVALID_PCA;
+    /*
+    for (i = 0; i < PHYSICAL_NAND_NUM; ++i)
+    {
+        for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j)
+        {
+            tmp_pca.fields.block = i;
+            tmp_pca.fields.page = j;
+            nand_read(storage_cache[i * NAND_SIZE_KB * 1024 / 512 + j], tmp_pca.pca);
+        }
+    }
+    *////////
+    /////江   先計算哪個block是victim block 然後把它先寫到storage_cache  並把victim block移到storage_cache
+    /*int victimhowmuch=0,highestvictim[2]={0};   //[1]是victimblock [2]是那個victim block的invalid block的次數
+    //int highestvictim_status[NAND_SIZE_KB * 1024 / 512]={PCA_INVALID};   
+    for (i = 0; i < PHYSICAL_NAND_NUM; ++i){
+         for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j){
+             if(pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j] == PCA_INVALID){
+                victimhowmuch++;
+             }
+         }
+         if(victimhowmuch>highestvictim[1]){
+            highestvictim[0]=i;
+            highestvictim[1]=victimhowmuch;
+         }
+         victimhowmuch=0;
+    }
+    for(j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j){
+        tmp_pca.fields.block=highestvictim[0];
+        tmp_pca.fields.page=j;
+        nand_read(storage_cache[j],tmp_pca.pca);
+    }
+    /////////////
+    //////////////////////////////////////////////廖末哲//////////////////////
+    /*
+    // erase all nands
+    for (i = 0; i < PHYSICAL_NAND_NUM; ++i)
+    {
+        nand_erase(i);
+    }
+    */
+     /////江   把那一格的nand erase
+     //nand_erase(highestvictim[0]);
+     //////////////////////////////////////////////廖末哲//////////////////////
+     /*
+    // write back the data from cache to nand
+    for (i = 0; i < PHYSICAL_NAND_NUM; ++i)
+    {
+        for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j)
+        {
+            // if this pca has data
+            if (pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j] == PCA_USED)
+            {
+                tmp_pca.fields.block = i;
+                tmp_pca.fields.page = j;
+                write_pca.pca = get_next_pca();
+                printf("writing from %d, %d\n", i, j);
+                printf("writing to %d, %d\n", write_pca.fields.block, write_pca.fields.page);
+                nand_write(storage_cache[i * NAND_SIZE_KB * 1024 / 512 + j], write_pca.pca);
+                update_pca_status(write_pca, PCA_USED);
 
-///全新  江 - 再經 Frisk 修改
-// 這是類似 full merge 的東西
+                // update L2P
+                for (k = 0; k < LOGICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512; ++k)
+                {
+                    if (L2P[k] == tmp_pca.pca)
+                    {
+                        printf("updating L2P[%d] from %d, %d to %d, %d\n", k, tmp_pca.fields.block, tmp_pca.fields.page, write_pca.fields.block, write_pca.fields.page);
+                        L2P[k] = write_pca.pca;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    */
+     /////江   紀錄victimblock狀態 
+     /* 
+     int highestvictim_status[NAND_SIZE_KB * 1024 / 512]={PCA_INVALID};
+    for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j){
+        if(pca_status[(highestvictim[0] * NAND_SIZE_KB * 1024 / 512) + j] == PCA_USED){
+            highestvictim_status[j]=PCA_USED;
+        }
+        pca_status[(highestvictim[0] * NAND_SIZE_KB * 1024 / 512) + j] == PCA_VALID;   //全部變成valid
+    }
+     /////江   把第一格移到已經erase的block剩下的依序往前挪
+     int checkPCA_USED=0;
+     if(highestvictim[0]!=0){
+        for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j){   ///第一格
+        if(pca_status[j] == PCA_USED){
+            tmp_pca.fields.block=0;
+            tmp_pca.fields.page=j;
+            write_pca.fields.block=highestvictim[0];
+            write_pca.fields.page=checkPCA_USED;
+            nand_write(tmp_pca.pca,write_pca.pca);
+            //nand_write(storage_cache[j],tmp_pca);
+            pca_status[(highestvictim[0] * NAND_SIZE_KB * 1024 / 512) + checkPCA_USED]=PCA_USED;
+            checkPCA_USED++;
+            }
+        }
+     }
+    nand_erase(0);
+    for (i = 1; i < PHYSICAL_NAND_NUM; ++i){
+        for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j){
+            if(pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j] == PCA_USED){
+                tmp_pca.fields.block = i;
+                tmp_pca.fields.page = j;
+                write_pca.pca = get_next_pca();   ///有個問題 我不確定get_next_pca()有沒有歸0  //會重複用到但我懶得想了...先這樣...
+                nand_write(tmp_pca.pca,write_pca.pca);
+                update_pca_status(write_pca,PCA_USED);
+            //L2P
+            for (k = 0; k < LOGICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512; ++k){
+                if (L2P[k] == tmp_pca.pca){
+                    printf("updating L2P[%d] from %d, %d to %d, %d\n", k, tmp_pca.fields.block, tmp_pca.fields.page, write_pca.fields.block, write_pca.fields.page);
+                    L2P[k] = write_pca.pca;
+                    break;
+                }
+            }
+            }
+        }
+        nand_erase(i);
+    }
+     /////江   現在是把storage_cache的資料存回去
+    for(j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j){
+        if(highestvictim_status[j] == PCA_USED){
+            write_pca.pca = get_next_pca();
+            nand_write(storage_cache[j],write_pca.pca);
+            update_pca_status(write_pca, PCA_USED);
+            //L2P
+            for (k = 0; k < LOGICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512; ++k){
+                if (L2P[k] == tmp_pca.pca){
+                    printf("updating L2P[%d] from %d, %d to %d, %d\n", k, tmp_pca.fields.block, tmp_pca.fields.page, write_pca.fields.block, write_pca.fields.page);
+                    L2P[k] = write_pca.pca;
+                    break;
+                }
+            }
+        }
+    }
+    // update the pca_status after write_pca to PCA_VALID   //這裡維持不變(cheng)...
+    for (i = write_pca.fields.block; i < PHYSICAL_NAND_NUM; ++i)
+    {
+        for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j)
+        {
+            if (i == write_pca.fields.block && j <= write_pca.fields.page)
+            {
+                continue;
+            }
+            else
+            {
+                pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j] = PCA_VALID;
+            }
+        }
+    }
+    printf("pca_status after GC:\n");
+    print_pca_status_table();
+    // return the next avalible pca
+    return get_next_pca();
+}
+*/
+///全新  江
+
 static unsigned int ftl_gc(){
-    printf("Starting GC\n");
+    printf("starting GC\n");
     int s;  //專門用來暫存存了多少的計數器
     int i, j, k;
     PCA_RULE tmp_pca, write_pca;
     curr_pca.pca = INVALID_PCA;  //會用到並且歸0 init
-    //////// 計算哪些 block 不需要動  (沒有任何 invalid 的 block)
-    int eraseBlock[LOGICAL_NAND_NUM]={-1};  // -1 表 null
-    int eb_top = 0;
+    //////// 計算那些block不需要動  (那些block的USED狀態比較多...)
+    int usedTimes[PHYSICAL_NAND_NUM]={0};
+    int timeLess=0;
+    int eraseBlock[PHYSICAL_NAND_NUM]={0};  //0 false 1 true
     for(i = 0; i < PHYSICAL_NAND_NUM; ++i){
         for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j){
-            if(pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j] == PCA_INVALID){
-                eraseBlock[eb_top] = i;
-                eb_top++;
-                break;
+            if(pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j] == PCA_USED){
+                usedTimes[i]++;
             }
+        }
+        if(usedTimes[i]<(NAND_SIZE_KB * 1024 / 512 * 6 / 10)){
+            timeLess++;
+            eraseBlock[i]=1;
         }
     }
 
-    // 對每個需要處理的 data block 進行 merge
-    for (int block_no = 0; block_no < eb_top; block_no++)
-    {
-        // 先備份資料
-        char backup[NAND_SIZE_KB * 1024 / 512][512];
-        // 初始化 (該死的 C 語言！)
-        for (int page_idx = 0; page_idx < NAND_SIZE_KB * 1024 / 512; page_idx++)
-        {
-            for (int ch_idx = 0; ch_idx < 512; ch_idx++)
-            {
-                backup[page_idx][ch_idx] = '\0';
+    if(timeLess<4){    ///例外處理   先決定那些block要erase
+        for(i = 0; i < PHYSICAL_NAND_NUM , timeLess > 0; ++i){
+            if(eraseBlock[i] == 0){
+                eraseBlock[i]=1;
+                timeLess--;
             }
-        }
-        
-        char page_used[NAND_SIZE_KB * 1024 / 512] = {0}; // 0: 未使用，1: 已使用
-        for (int page_no = 0; page_no < NAND_SIZE_KB * 1024 / 512; page_no++)
-        {
-            if (pca_status[(block_no * NAND_SIZE_KB * 1024 / 512) + page_no] == PCA_USED)
-            {
-                PCA_RULE finding;
-                finding.fields.block = block_no;
-                finding.fields.page = page_no;
-                int result = nand_read(backup[page_no], finding.pca);
-                if (result < 0)
-                {
-                    printf("> Found broken pca_status when performing GC!\n");
-                    abort();
-                }
-                page_used[page_no] = 1;
-            }
-            else if (pca_status[(block_no * NAND_SIZE_KB * 1024 / 512) + page_no] == PCA_INVALID)
-            {
-                PCA_RULE finding;
-                finding = table[block_no][page_no];
-                int result = nand_read(backup[page_no], finding.pca);
-                if (result < 0)
-                {
-                    printf("> Found broken pca_status when performing GC!\n");
-                    abort();
-                }
-                page_used[page_no] = 1;
-            }
-        }
-
-        // 然後，將這整個 block erase 掉，再把所有資料寫回去
-        nand_erase(block_no);
-        for (int page_no = 0; page_no < NAND_SIZE_KB * 1024 / 512; page_no++)
-        {
-            printf("> Moving block %d, page %d back...\n", block_no, page_no);
-            PCA_RULE target;
-            target.fields.block = block_no;
-            target.fields.page = page_no;
-            if (page_used[page_no])
-            {
-                int result = nand_write(backup[page_no], target.pca);
-                if (result < 0)
-                {
-                    printf("> Error when writing back during GC!\n");
-                    abort();
-                }
-                update_pca_status(target, PCA_USED);
-            }
-            else
-            {
-                update_pca_status(target, PCA_VALID);
-            }
-            table[block_no][page_no] = target;
         }
     }
-
-    // 最後，把 log block 清空，然後 reset log_block_head
-    for (int index = 0; index < PHYSICAL_NAND_NUM - LOGICAL_NAND_NUM; index++)
-    {
-        int target_block = logBlocks[index];
-        nand_erase(target_block);
-        for (int page_no = 0; page_no < NAND_SIZE_KB * 1024 / 512; page_no++)
-        {
-            PCA_RULE target;
-            target.fields.block = target_block;
-            target.fields.page = page_no;
-            update_pca_status(target, PCA_VALID);
+    int storageSize=0;   //計算大小(storage要存的大小)  這裡有問題...
+    int blockforL2P[PHYSICAL_NAND_NUM][NAND_SIZE_KB * 1024 / 512]={-1};  //-1就是沒有
+    //int pageforL2P[]
+    for(i = 0; i < PHYSICAL_NAND_NUM; ++i){
+        if(eraseBlock[i]==1){    //對於要erase的block進行處理
+            for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j){
+                tmp_pca.fields.block=i;
+                tmp_pca.fields.page=j;
+                if(pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j]== PCA_USED){
+                    //tmp_pca.fields.block=i;
+                    //tmp_pca.fields.page=j;
+                    nand_read(storage_cache[storageSize],tmp_pca.pca);
+                    blockforL2P[i][j]=storageSize;  //存放storage size
+                    storageSize++;
+                    //update_pca_status(tmp_pca.pca,PCA_VALID);
+                }
+                pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j]= PCA_VALID;  //把block裡的所有page都變valid...
+            }
+            nand_erase(i);    //刪掉block
         }
     }
-    log_block_tail.fields.block = LOGICAL_NAND_NUM;
-    log_block_tail.fields.page = 0;
-    
-    
+    for(s = 0; s < storageSize; ++s){  //把資料填入...
+        write_pca.pca=get_next_pca();
+        nand_write(storage_cache[s],write_pca.pca);
+        //int updateX=0,updateY=0;
+        //updateX=write_pca.fields.block;
+        //updateY=write_pca.fields.page;
+        pca_status[(write_pca.fields.block * NAND_SIZE_KB * 1024 / 512) + write_pca.fields.page] = PCA_USED;
+        for(i = 0; i < PHYSICAL_NAND_NUM; ++i){      //更新L2P
+            if(eraseBlock[i]==1){  //這可以刪
+                for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j){
+                    if(blockforL2P[i][j] == s){
+                        for (k = 0; k < LOGICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512; ++k){
+                            tmp_pca.fields.block=i;
+                            tmp_pca.fields.page=j;
+                            if(L2P[k]==tmp_pca.pca){
+                                printf("updating L2P[%d] from %d, %d to %d, %d\n", k, tmp_pca.fields.block, tmp_pca.fields.page, write_pca.fields.block, write_pca.fields.page);
+                                L2P[k] = write_pca.pca;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     printf("pca_status after GC:\n");
     print_pca_status_table();
     // return the next avalible pca
-    return log_block_tail.pca;
+    return get_next_pca();
 }
 ////////////////////// 
 static unsigned int get_next_pca()        //應該改完了
 {
-    log_block_tail = GetNextLogPage(log_block_tail);
-    return log_block_tail.pca;
+    /*  TODO: seq A, need to change to seq B */
+    // pca has 32 bits with two part, 16 bits for page other 16 bits for block
+    // the "block" means the storage (block1 is nand_1)
+    if (curr_pca.pca == INVALID_PCA)
+    {
+        // init
+        curr_pca.pca = 0;
+        return curr_pca.pca;
+    }
+    /*else if (curr_pca.pca == FULL_PCA)
+    {
+        // ssd is full, no pca can be allocated
+        printf("No new PCA\n");
+        return FULL_PCA;
+    }*/
+    
+    // if current page is the last page in the storage
+    while(!(pca_status[(curr_pca.fields.block * NAND_SIZE_KB * 1024 / 512) + curr_pca.fields.page] == PCA_VALID )){
+        if (curr_pca.fields.page == (NAND_SIZE_KB * 1024 / 512) - 1)
+    {
+        //  implement this when making GC
+        //  find next empty storage for new pca
+        //  int i;
+        //  for (i = 0; i < PHYSICAL_NAND_NUM; ++i){
+        //      //to do: check if the storage_i is empty
+        //  }
+
+        // right shift 1 storage
+        curr_pca.fields.block += 1;
+        // set current page to 0
+        curr_pca.fields.page = 0;
+    }
+    else
+    {
+        curr_pca.fields.page += 1;
+    }
+    // check if the current pca is out of range of storage
+    if (curr_pca.fields.block >= PHYSICAL_NAND_NUM)
+    {
+        printf("No new PCA, do garbage collection\n");
+        curr_pca.pca = ftl_gc();   //不確定這邊...
+    }
+    //break;   //破出迴圈
+    }
+    
+
+    
+    // printf("PCA = page %d, nand %d\n", curr_pca.fields.page, curr_pca.fields.block);
+    return curr_pca.pca;
 }
 
 static int ftl_read(char *buf, size_t lba)
 {
-    PCA_RULE read_target;
-    read_target.pca = lba;
-    
-    printf("> Trying to read from block %d, page %d\n", read_target.fields.block, read_target.fields.page);
-    PCA_RULE nowLoc;
-    if (pca_status[read_target.fields.block * NAND_SIZE_KB * 1024 / 512 + read_target.fields.page] == PCA_INVALID)
+    PCA_RULE pca;
+
+    pca.pca = L2P[lba];
+    if (pca.pca == INVALID_PCA)
     {
-        printf("> Data not present on original page\n");
-        nowLoc = table[read_target.fields.block][read_target.fields.page];
-        printf("> Reading from block %d, page %d\n", nowLoc.fields.block, nowLoc.fields.page);
-    }
-    else if (pca_status[read_target.fields.block * NAND_SIZE_KB * 1024 / 512 + read_target.fields.page] == PCA_USED)
-    {
-        nowLoc = read_target;
+        // data has not be written, return 0
+        return 0;
     }
     else
     {
-        printf("> No value stored!");
-        return 0;
+        return nand_read(buf, pca.pca);
     }
-    int result = nand_read(buf, nowLoc.pca);
-    printf("> The value stored is %s\n", buf);
-    return result;
 }
 
 static int ftl_write(const char *buf, size_t lba_rnage, size_t lba)
 {
     printf("lba: %ld\n", lba);
-    PCA_RULE write_target, write_logical;
-    write_logical.pca = lba;
+    PCA_RULE pca;
+    pca.pca = get_next_pca();
 
-    if (pca_status[write_logical.fields.block * NAND_SIZE_KB * 1024 / 512 + write_logical.fields.page] == PCA_VALID)
+    printf("writing PCA: page %d, nand %d\n", curr_pca.fields.page, curr_pca.fields.block);
+    if (nand_write(buf, pca.pca) > 0)
     {
-        printf("> Normal write\n");
-        write_target = write_logical;
-        printf("> Preparing to write %d to block %d, page %d\n", buf, write_target.fields.block, write_target.fields.page);
-    }
-    else if (pca_status[write_logical.fields.block * NAND_SIZE_KB * 1024 / 512 + write_logical.fields.page] == PCA_INVALID)
-    {
-        printf("> Update write\n");
-        // Invalid the previous page
-        PCA_RULE nowLoc = table[write_logical.fields.block][write_logical.fields.page];
-        update_pca_status(nowLoc, PCA_INVALID);
-        // Put the data in the next available log page
-        write_target = log_block_tail;
-        // Register back to the mapping table
-        table[write_logical.fields.block][write_logical.fields.page] = log_block_tail;
-        printf("> Written %d to logical block %d, page %d; Which is now physical block %d, page %d\n",
-               buf, write_logical.fields.block, write_logical.fields.page, log_block_tail.fields.block, log_block_tail.fields.page);
-        // Push the log block tail back
-        log_block_tail = GetNextLogPage(log_block_tail);
-    }
-    else if (pca_status[write_logical.fields.block * NAND_SIZE_KB * 1024 / 512 + write_logical.fields.page] == PCA_USED)
-    {
-        printf("> 1st Update write\n");
-        // Invalid the previous page
-        update_pca_status(write_logical, PCA_INVALID);
-        // Put the data in the next available log page
-        write_target = log_block_tail;
-        // Register back to the mapping table
-        table[write_logical.fields.block][write_logical.fields.page] = log_block_tail;
-        printf("> Written %d to logical block %d, page %d; Which is now physical block %d, page %d\n",
-               buf, write_logical.fields.block, write_logical.fields.page, log_block_tail.fields.block, log_block_tail.fields.page);
-        // Push the log block tail back
-        log_block_tail = GetNextLogPage(log_block_tail);
-    }
+        // overwrite operation
+        // need to modify
+        // printf("%d\n", L2P[lba]);
+        PCA_RULE tmp_pca;
+        tmp_pca.pca = L2P[lba];
+        if (!(tmp_pca.pca == INVALID_PCA))
+        {
+            int status = pca_status[(tmp_pca.fields.block * NAND_SIZE_KB * 1024 / 512) + tmp_pca.fields.page];
+            if (status == PCA_USED)
+            {
+                update_pca_status(tmp_pca, PCA_INVALID);
+            }
+        }
 
-    printf("writing PCA: page %d, nand %d\n", write_target.fields.page, write_target.fields.block);
-    if (nand_write(buf, write_target.pca) > 0)
-    {
-        L2P[lba] = write_target.pca;
-        update_pca_status(write_target, PCA_USED);
+        L2P[lba] = pca.pca;
+        update_pca_status(pca, PCA_USED);
         print_pca_status_table();
         return 512;
     }
@@ -811,27 +916,6 @@ int main(int argc, char *argv[])
     {
         storage_cache[idx] = (char *)malloc(512 * sizeof(char));
     }
-    
-    // Initialize
-    for (short block_no = 0; block_no < PHYSICAL_NAND_NUM; block_no++)
-    {
-        for (short page_no = 0; page_no < NAND_SIZE_KB * 1024 / 512; page_no++)
-        {
-            if (block_no < LOGICAL_NAND_NUM)
-            {
-                PCA_RULE package;
-                package.fields.block = block_no;
-                package.fields.page = page_no;
-                table[block_no][page_no] = package;
-            }
-            else
-            {
-                logBlocks[block_no - LOGICAL_NAND_NUM] = block_no;
-            }
-        }
-    }
-    log_block_tail.fields.block = LOGICAL_NAND_NUM;
-    log_block_tail.fields.page = 0;
 
     // create nand file
     for (idx = 0; idx < PHYSICAL_NAND_NUM; idx++)
