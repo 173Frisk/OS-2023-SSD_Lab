@@ -180,6 +180,11 @@ static void print_pca_status_table()
 
 static unsigned int get_next_pca();
 
+struct BlockInfo{
+    int count=0;
+    int index;
+};
+
 ///全新  江
 static unsigned int ftl_gc(){
     printf("starting GC\n");
@@ -203,21 +208,23 @@ static unsigned int ftl_gc(){
             eraseBlock[i]=1;
         }
     }
+
     for(i = 0; i < PHYSICAL_NAND_NUM; ++i){   //12/11修改
-    int whatbig=0;
+    int whatbig=(PHYSICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512) + NAND_SIZE_KB * 1024 / 512;
         for(j = 0; j < PHYSICAL_NAND_NUM; ++j){
-            if(whatbig<usedTimes[j]){
+            if(whatbig>usedTimes[j]){
                 whatbig=usedTimes[j];
             }
         }
         for(int a = 0; a < PHYSICAL_NAND_NUM; ++a){
                 if(whatbig==usedTimes[a]){
                     eraseBlock_detailed[i]=a;   //這格要被erase的權重較大
-                    usedTimes[a]=-1;    //讓他不會再被比較
+                    usedTimes[a]=(PHYSICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512) + NAND_SIZE_KB * 1024 / 512 + 1;    //讓他不會再被比較
                     break;
                 }
             }
     }
+    
     if(timeLess < 5){    
         for(i = 0; i < PHYSICAL_NAND_NUM , timeLess < 5; ++i){
             if(eraseBlock[eraseBlock_detailed[i]] == 0){
