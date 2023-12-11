@@ -191,6 +191,7 @@ static unsigned int ftl_gc(){
     int usedTimes[PHYSICAL_NAND_NUM]={0};
     int timeLess=0;
     int eraseBlock[PHYSICAL_NAND_NUM]={0};  //0 false 1 true
+    int eraseBlock_detailed[PHYSICAL_NAND_NUM]={0};
     for(i = 0; i < PHYSICAL_NAND_NUM; ++i){
         for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j){
             if(pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j] == PCA_USED){
@@ -202,7 +203,30 @@ static unsigned int ftl_gc(){
             eraseBlock[i]=1;
         }
     }
-
+    for(i = 0; i < PHYSICAL_NAND_NUM; ++i){   //12/11修改
+    int whatbig=0;
+        for(j = 0; j < PHYSICAL_NAND_NUM; ++j){
+            if(whatbig<usedTimes[j]){
+                whatbig=usedTimes[j];
+            }
+        }
+        for(int a = 0; a < PHYSICAL_NAND_NUM; ++a){
+                if(whatbig==usedTimes[a]){
+                    eraseBlock_detailed[i]=a;   //這格要被erase的權重較大
+                    usedTimes[a]=-1;    //讓他不會再被比較
+                    break;
+                }
+            }
+    }
+    if(timeLess < 5){    
+        for(i = 0; i < PHYSICAL_NAND_NUM , timeLess < 5; ++i){
+            if(eraseBlock[eraseBlock_detailed[i]] == 0){
+                eraseBlock[eraseBlock_detailed[i]]=1;
+                timeLess++;
+            }
+        }
+    }
+    /*
     if(timeLess < 5){    ///例外處理   先決定那些block要erase
         for(i = 0; i < PHYSICAL_NAND_NUM , timeLess < 5; ++i){
             if(eraseBlock[i] == 0){
@@ -211,6 +235,7 @@ static unsigned int ftl_gc(){
             }
         }
     }
+    */
     int storageSize=0;   //計算大小(storage要存的大小)  這裡有問題...
     int blockforL2P[PHYSICAL_NAND_NUM][NAND_SIZE_KB * 1024 / 512]={-1};  //-1就是沒有
     //int pageforL2P[]
@@ -232,7 +257,7 @@ static unsigned int ftl_gc(){
             nand_erase(i);    //刪掉block
         }
     }
-    for(i = 0; i < PHYSICAL_NAND_NUM; ++i){   //新增的CODE
+    for(i = 0; i < PHYSICAL_NAND_NUM; ++i){   //新增的CODE 12/11 
         if(eraseBlock[i]==1){
             for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j){
                 pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j] = PCA_VALID;
