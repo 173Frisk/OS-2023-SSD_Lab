@@ -2,14 +2,14 @@
 mkdir test
 
 
-for i in {1..10000}; do echo $i >> /tmp/ssd1/ssd_file; done
-./out/ssd_fuse_dut /tmp/ssd1/ssd_file r 80000 > ./test/ssd_dump_0.txt
+for i in {1..10000}; do echo $i >> /tmp/ssd/ssd_file; done
+./out/ssd_fuse_dut /tmp/ssd/ssd_file r 80000 > ./test/ssd_dump_0.txt
 
-for i in {1..100}; do ./out/ssd_fuse_dut /tmp/ssd1/ssd_file w 10 $(($i * 100)); done
-./out/ssd_fuse_dut /tmp/ssd1/ssd_file r 80000 > ./test/ssd_dump_1.txt
+for i in {1..100}; do ./out/ssd_fuse_dut /tmp/ssd/ssd_file w 10 $(($i * 100)); done
+./out/ssd_fuse_dut /tmp/ssd/ssd_file r 80000 > ./test/ssd_dump_1.txt
 
-for i in {1..10}; do ./out/ssd_fuse_dut /tmp/ssd1/ssd_file w 981 $(($i * 981)); done
-./out/ssd_fuse_dut /tmp/ssd1/ssd_file r 80000 > ./test/ssd_dump_2.txt
+for i in {1..10}; do ./out/ssd_fuse_dut /tmp/ssd/ssd_file w 981 $(($i * 981)); done
+./out/ssd_fuse_dut /tmp/ssd/ssd_file r 80000 > ./test/ssd_dump_2.txt
 
 
 for i in {1..10000}; do echo $i >> ./test/test.txt; done
