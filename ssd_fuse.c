@@ -318,7 +318,7 @@ static unsigned int get_next_pca()        //應該改完了
     }*/
     
     // if current page is the last page in the storage
-    while(!(pca_status[(curr_pca.fields.block * NAND_SIZE_KB * 1024 / 512) + curr_pca.fields.page] == PCA_VALID )){
+    do{
         if (curr_pca.fields.page == (NAND_SIZE_KB * 1024 / 512) - 1)
     {
         //  implement this when making GC
@@ -344,7 +344,7 @@ static unsigned int get_next_pca()        //應該改完了
         curr_pca.pca = ftl_gc();   //不確定這邊...
     }
     //break;   //破出迴圈
-    }
+    }while(!(pca_status[(curr_pca.fields.block * NAND_SIZE_KB * 1024 / 512) + curr_pca.fields.page] == PCA_VALID ))
     
 
     
