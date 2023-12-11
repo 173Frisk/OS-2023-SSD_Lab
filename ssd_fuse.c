@@ -180,10 +180,6 @@ static void print_pca_status_table()
 
 static unsigned int get_next_pca();
 
-struct BlockInfo{
-    int count=0;
-    int index;
-};
 
 ///全新  江
 static unsigned int ftl_gc(){
