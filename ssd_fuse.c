@@ -232,6 +232,14 @@ static unsigned int ftl_gc(){
             nand_erase(i);    //刪掉block
         }
     }
+    for(i = 0; i < PHYSICAL_NAND_NUM; ++i){   //新增的CODE
+        if(eraseBlock[i]==1){
+            for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j){
+                pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j] = PCA_VALID;
+            }
+        }
+    }
+
     for(s = 0; s < storageSize; ++s){  //把資料填入...
         write_pca.pca=get_next_pca();
         nand_write(storage_cache[s],write_pca.pca);
