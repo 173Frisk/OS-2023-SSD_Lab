@@ -194,11 +194,11 @@ static unsigned int ftl_gc(){
     int eraseBlock_detailed[PHYSICAL_NAND_NUM]={0};
     for(i = 0; i < PHYSICAL_NAND_NUM; ++i){
         for (j = 0; j < NAND_SIZE_KB * 1024 / 512; ++j){
-            if(pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j] == PCA_USED){
+            if(!(pca_status[(i * NAND_SIZE_KB * 1024 / 512) + j] == PCA_INVALID)){    //如果是USED或者VALID就不動
                 usedTimes[i]++;
             }
         }
-        if(usedTimes[i]<(NAND_SIZE_KB * 1024 / 512 * 6 / 10)){
+        if(usedTimes[i]<(NAND_SIZE_KB * 1024 / 512 * 67 / 100)){
             timeLess++;
             eraseBlock[i]=1;
         }
