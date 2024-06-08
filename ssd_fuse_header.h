@@ -13,6 +13,7 @@
 #define NAND_SIZE_KB (10)
 #define INVALID_PCA     (0xFFFFFFFF)
 #define FULL_PCA     (0xFFFFFFFE)
+// Modify the NAND_LOCATION accordingly before compiling!
 #define NAND_LOCATION  "/home/share/ssd_fuse/"
 
 enum

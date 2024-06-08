@@ -48,7 +48,6 @@ union pca_rule
 PCA_RULE curr_pca;
 
 int *pca_status;
-char **storage_cache;
 
 PCA_RULE table[LOGICAL_NAND_NUM][NAND_SIZE_KB * 1024 / 512], log_block_tail, data_block_tail;
 int logBlocks[PHYSICAL_NAND_NUM - LOGICAL_NAND_NUM];
@@ -281,7 +280,7 @@ static unsigned int ftl_gc(){
     {
         if (eraseBlock[block_no])
         {
-            // 先備份資料
+            // 先備份並整理出有效的資料
             char backup[NAND_SIZE_KB * 1024 / 512][512];
             // 初始化 (該死的 C 語言！)
             for (int page_idx = 0; page_idx < NAND_SIZE_KB * 1024 / 512; page_idx++)
@@ -873,12 +872,6 @@ int main(int argc, char *argv[])
     curr_pca.pca = INVALID_PCA;
     pca_status = malloc(PHYSICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512 * sizeof(int));
     memset(pca_status, PCA_VALID, PHYSICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512 * sizeof(int));
-
-    storage_cache = (char **)malloc(PHYSICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512 * sizeof(char *));
-    for (idx = 0; idx < PHYSICAL_NAND_NUM * NAND_SIZE_KB * 1024 / 512; ++idx)
-    {
-        storage_cache[idx] = (char *)malloc(512 * sizeof(char));
-    }
     
     // Initialize
     for (short block_no = 0; block_no < PHYSICAL_NAND_NUM; block_no++)
